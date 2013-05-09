@@ -1,7 +1,6 @@
-# use from irb for now. will learn thor next
-
 require 'twitter'
 require 'mongo_mapper'
+require 'highline/import'
 require_relative '../secrets/twitter_keys'
 
 MongoMapper.database = 'twitters'
@@ -23,44 +22,49 @@ class Tweet
   key :user_location, String
 end
 
-def store_tweet(tweet, query_phrase)
-  t = Tweet.new
-  t.id = tweet.id
-  t.text = tweet.full_text
-  t.user_id = tweet[:user][:id]
-  t.user_name = tweet[:user][:name]
-  t.user_screen_name = tweet[:user][:screen_name]
-  t.user_location = tweet[:user][:location]
-  t.query_phrase = query_phrase
-  t.save
-end
-
-def quick_search
-  print "     Search:   "
-  STDOUT.flush
-  term = gets.chomp
-
-  Twitter.search(term, :count => 100).results.each do |tweet| 
-    print "\n     #{tweet.text}\n"
-    store_tweet(tweet, term)
-  end
-  print "----------#{Tweet.count}----------\n\n"
-end
-
-def location_strings
-  freq = Hash.new(0)
-  locations = Tweet.all.collect {|tweet| tweet.user_location}
-  
-  for l in locations
-    location = l == "" ? "unspecified" : l
-    freq[location] += 1
+module Actions
+  def store_tweets(tweets, query_phrase)
+    tweets.each do |tweet|
+      t = Tweet.new
+      t.id = tweet.id
+      t.text = tweet.full_text
+      t.user_id = tweet[:user][:id]
+      t.user_name = tweet[:user][:name]
+      t.user_screen_name = tweet[:user][:screen_name]
+      t.user_location = tweet[:user][:location]
+      t.query_phrase = query_phrase
+      t.save
+    end
   end
 
-  return freq.sort_by {|word, count| count}.reverse
-end
+  def quick_search(term)
+    new_tweets = Twitter.search(term, :count => 100).results
+    store_tweets(new_tweets, term)
+    return new_tweets
+  end
 
-def print_hash(things)
-  things.each {|a, b| print " #{a}:  #{b}\n"}
+  def location_string_freqs
+    freq = Hash.new(0)
+    locations = Tweet.all.collect { |tweet| tweet.user_location}
+    
+    locations.each do |location|
+      if location == ""
+        freq["unspecified"] += 1
+      else
+        freq[location] += 1
+      end
+    end
+
+    return freq.sort_by { |word, count| count}.reverse
+  end
+
+  def print_hash(things)
+    colors = %w{black red green yellow blue magenta cyan white}
+    things.each_with_index do |(l, c), i|
+      clr = colors[7 - i % 7]
+      say("<%= color('#{l} : #{'X'*c}', :#{clr}, :bold, :blink) %>")
+    end
+  end
 end
 
 Tweet.ensure_index [[:id, 1]], :unique => true
